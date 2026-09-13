@@ -10,6 +10,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 from pathlib import Path
 import secrets
+import tempfile
+import os
 import urllib.parse
 import urllib.request
 import webbrowser
@@ -76,8 +78,18 @@ def connect(client_file):
         "token": json.dumps({"access_token": token["access_token"],
             "token_type": token["token_type"], "refresh_token": token["refresh_token"],
             "expiry": expiry.isoformat()})}
-    with path.open("w", encoding="utf-8") as handle:
-        config.write(handle)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
+                                         prefix="oauth-", delete=False) as handle:
+            temporary = Path(handle.name)
+            config.write(handle)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        if temporary:
+            temporary.unlink(missing_ok=True)
     print("Connected. Direct Drive transfers are ready; credentials saved locally only.", flush=True)
 
 

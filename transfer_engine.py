@@ -45,10 +45,13 @@ class TransferPlan:
     completion_note: str
 
 
-def direct_plan(source, parent, workers, replace, log, streams=4):
+def direct_plan(source, parent, workers, replace, log, streams=4, profile="Small files"):
     source, parent = str(source).strip(), str(parent).strip()
     if not source or not parent:
         raise ValueError("Choose both folders.")
+    for endpoint in (source, parent):
+        if re.match(r"^[A-Za-z]:[\\/](My Drive|Shared drives|Other computers)([\\/]|$)", endpoint, re.IGNORECASE):
+            raise ValueError("Use the Drive picker for both cloud endpoints. Do not mix a mounted Google Drive folder with a direct gdrive: path.")
     if not 1 <= int(workers) <= 128:
         raise ValueError("Parallel transfers must be between 1 and 128.")
     if not 0 <= int(streams) <= 16:
@@ -88,6 +91,8 @@ def direct_plan(source, parent, workers, replace, log, streams=4):
         "--stats-one-line", "--stats-log-level", "NOTICE", "--log-level", "INFO",
         "--log-file", str(log), "--retries", "3", "--low-level-retries", "5",
         "--contimeout", "15s", "--timeout", "2m", "--multi-thread-streams", str(streams)]
+    command += ["--fast-list", "--drive-pacer-min-sleep", "10ms", "--drive-chunk-size",
+                "64M" if profile == "Large files" else "8M"]
     if not replace:
         command.append("--ignore-existing")
     return TransferPlan(command, target, "rclone", Path(log),

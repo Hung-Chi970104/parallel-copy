@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import time
 import uuid
 
@@ -78,7 +79,9 @@ def wait_remote(remote, expected, timeout=600):
     raise TimeoutError(f"Cloud metadata/checksum verification did not complete: {remote}")
 
 
-def run_case(direction, backend, profile, workers, restartable, trial, streams=4, seed="seed", fast_list=False, pacer_ms=100, chunk_mib=8, cutoff_mib=256):
+def run_case(direction, backend, profile, workers, restartable, trial, streams=4, seed="seed", fast_list=False, pacer_ms=100, chunk_mib=8, cutoff_mib=256, warm=False, upload_cutoff_mib=8, folder_jobs=8):
+    if backend in ("folders", "batches"):
+        fast_list, pacer_ms, chunk_mib = True, 10, 8
     expected = json.loads((DATA / f"{profile}.json").read_text())
     identifier = f"{direction}-{backend}-{profile}-t{workers}-z{int(restartable)}-s{streams}-r{trial}-{uuid.uuid4().hex[:6]}"
     remote_source = f"gdrive:{CLOUD_ROOT}/{seed}/{profile}"
@@ -87,21 +90,34 @@ def run_case(direction, backend, profile, workers, restartable, trial, streams=4
     remote_target = f"gdrive:{CLOUD_ROOT}/runs/{identifier}/{profile}"
     local_target = DATA / "downloads" / identifier / profile
     mounted_target = MOUNT / "runs" / identifier / profile
-    source = str(local_source) if direction == "upload" else (remote_source if backend == "rclone" else str(mount_source))
-    target = str(local_target) if direction == "download" else (remote_target if backend == "rclone" else str(mounted_target))
+    direct = backend in ("rclone", "folders", "batches")
+    source = str(local_source) if direction == "upload" else (remote_source if direct else str(mount_source))
+    target = str(local_target) if direction == "download" else (remote_target if direct else str(mounted_target))
     log = DATA / f"{identifier}.log"
     row = {"id": identifier, "utc": datetime.now(timezone.utc).isoformat(), "direction": direction,
            "backend": backend, "profile": profile, "workers": workers, "restartable": restartable,
            "streams": streams, "trial": trial, "files": len(expected),
            "bytes": sum(item["size"] for item in expected.values()), "seed": seed, "fast_list": fast_list,
-           "pacer_ms": pacer_ms, "chunk_mib": chunk_mib, "cutoff_mib": cutoff_mib,
-           "cache": "DriveFS warm/unspecified" if backend != "rclone" and direction != "upload" else "bypasses DriveFS" if backend == "rclone" else "local source"}
-    if backend == "rclone":
+           "pacer_ms": pacer_ms, "chunk_mib": chunk_mib, "cutoff_mib": cutoff_mib, "warm": warm,
+           "upload_cutoff_mib": upload_cutoff_mib,
+           "folder_jobs": folder_jobs,
+           "cache": "DriveFS warm/unspecified" if not direct and direction != "upload" else "bypasses DriveFS" if direct else "local source"}
+    if backend in ("folders", "batches"):
+        if direction == "download":
+            local_target.parent.mkdir(parents=True, exist_ok=True)
+            parent = str(local_target.parent)
+        else:
+            parent = target.rsplit("/", 1)[0]
+        command = [sys.executable, str(ROOT / "folder_parallel.py"), source, parent,
+            "--workers", str(workers), "--folders", str(folder_jobs), "--replace", "--log", str(log)]
+        if backend == "batches":
+            command += ["--strategy", "groups"]
+    elif backend == "rclone":
         command = rclone_base() + ["copy", source, target, "--transfers", str(workers),
             "--checkers", "8", "--multi-thread-streams", str(streams), "--log-file", str(log),
             "--log-level", "INFO", "--stats", "1s", "--retries", "2", "--low-level-retries", "5"]
         command += ["--drive-pacer-min-sleep", f"{pacer_ms}ms", "--drive-chunk-size", f"{chunk_mib}M",
-                    "--multi-thread-cutoff", f"{cutoff_mib}M"]
+                    "--multi-thread-cutoff", f"{cutoff_mib}M", "--drive-upload-cutoff", f"{upload_cutoff_mib}M"]
         if fast_list:
             command.append("--fast-list")
     elif backend == "robocopy":
@@ -111,11 +127,25 @@ def run_case(direction, backend, profile, workers, restartable, trial, streams=4
             command.append("/Z")
     else:
         command = None
+    if warm and not direct and direction != "upload":
+        for path in mount_source.rglob("*"):
+            if path.is_file():
+                with path.open("rb") as handle:
+                    while handle.read(1024 * 1024):
+                        pass
+        row["cache"] = "Explicitly warmed immediately before timing"
     start = time.perf_counter()
     try:
         if command:
-            process = subprocess.run(command, capture_output=True, timeout=600,
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            try:
+                process.communicate(timeout=600)
+            except subprocess.TimeoutExpired:
+                from folder_parallel import kill_tree
+                kill_tree(process)
+                process.communicate()
+                raise
             row["exit_code"] = process.returncode
             if process.returncode < 0 or process.returncode >= (8 if backend == "robocopy" else 1):
                 raise RuntimeError(f"Transfer failed, code {process.returncode}; see local log")
@@ -149,7 +179,7 @@ if __name__ == "__main__":
     sub.add_parser("prepare")
     run = sub.add_parser("run")
     run.add_argument("direction", choices=["download", "upload", "cloud-copy"])
-    run.add_argument("backend", choices=["robocopy", "rclone", "python"])
+    run.add_argument("backend", choices=["robocopy", "rclone", "python", "folders", "batches"])
     run.add_argument("profile", choices=PROFILES)
     run.add_argument("--workers", type=int, default=16)
     run.add_argument("--restartable", action="store_true")
@@ -160,11 +190,15 @@ if __name__ == "__main__":
     run.add_argument("--pacer-ms", type=int, default=100)
     run.add_argument("--chunk-mib", type=int, default=8)
     run.add_argument("--cutoff-mib", type=int, default=256)
+    run.add_argument("--warm", action="store_true")
+    run.add_argument("--upload-cutoff-mib", type=int, default=8)
+    run.add_argument("--folder-jobs", type=int, default=8)
     args = parser.parse_args()
     if args.action == "prepare":
         prepare()
     else:
         result = run_case(args.direction, args.backend, args.profile, args.workers,
                           args.restartable, args.trial, args.streams, args.seed, args.fast_list,
-                          args.pacer_ms, args.chunk_mib, args.cutoff_mib)
+                          args.pacer_ms, args.chunk_mib, args.cutoff_mib, args.warm,
+                          args.upload_cutoff_mib, args.folder_jobs)
         raise SystemExit(0 if result["status"] == "ok" else 1)

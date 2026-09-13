@@ -23,6 +23,10 @@ class TransferPlans(unittest.TestCase):
         with self.assertRaises(ValueError):
             remote_parts("gdrive:a/../b")
 
+    def test_does_not_report_cache_writes_as_cloud_api_completion(self):
+        with self.assertRaisesRegex(ValueError, "Do not mix"):
+            direct_plan("gdrive:folder", "G:/My Drive/destination", 16, False, Path("test.log"))
+
     def test_cloud_copy_preserves_source_folder_and_skips_existing(self):
         with patch("transfer_engine.rclone_base", return_value=["rclone"]):
             plan = direct_plan("gdrive:source/板", "gdrive:target", 32, False, Path("test.log"))

@@ -18,6 +18,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 from transfer_engine import CONFIG, ROOT, direct_plan, is_remote, rclone_base, result_message
 from drive_picker import DrivePicker
+from scratch import TransferScratch
 
 
 def copy_command(source, parent, workers, replace, resumable, log):
@@ -61,6 +62,10 @@ class CopyApp:
         self.cancelled = False
         self.target = None
         self.backend = "robocopy"
+        self.cloud_route = False
+        self.scratch = None
+        self.auth_process = None
+        self.auth_scratch = None
         root.title("Parallel Folder Copy")
         root.geometry("940x720")
         root.minsize(650, 520)
@@ -106,11 +111,23 @@ class CopyApp:
         self.resumable = tk.BooleanVar(value=True)
         checks = ttk.Frame(frame)
         checks.grid(row=6, column=0, columnspan=3, sticky="w", pady=10)
+        presets = ttk.Frame(checks)
+        presets.pack(anchor="w", pady=(0, 6))
+        ttk.Label(presets, text="Cloud preset").pack(side="left", padx=(0, 10))
+        self.profile = tk.StringVar(value="Small files")
+        preset = ttk.Combobox(presets, textvariable=self.profile, values=["Small files", "Large files"],
+                              state="readonly", width=18)
+        preset.pack(side="left")
+        preset.bind("<<ComboboxSelected>>", lambda _: self.workers.set(("8" if self.profile.get() == "Large files" else "64") if self.cloud_route else "16"))
+        self.preset_widget = preset
+        self.inputs.append(preset)
         for label, variable in [("Replace existing files when different", self.replace),
-                                ("Resume interrupted files (may be slower)", self.resumable)]:
+                                ("Resume interrupted files (Windows folder copies only)", self.resumable)]:
             checkbox = ttk.Checkbutton(checks, text=label, variable=variable)
             checkbox.pack(anchor="w", pady=2)
             self.inputs.append(checkbox)
+            if variable is self.resumable:
+                self.resume_checkbox = checkbox
         buttons = ttk.Frame(frame)
         buttons.grid(row=7, column=0, columnspan=3, sticky="ew", pady=8)
         self.start_button = ttk.Button(buttons, text="Start copy", command=self.start)
@@ -142,26 +159,42 @@ class CopyApp:
         DrivePicker(self.root, variable.set, variable.get())
 
     def connect_drive(self):
+        if self.auth_process or self.process:
+            return
         client = filedialog.askopenfilename(parent=self.root, title="Choose Google OAuth desktop-client JSON",
                                            filetypes=[("Google OAuth JSON", "*.json")])
         if not client:
             return
         import sys
-        log_path = ROOT / ".local" / "connect.log"
-        log_path.parent.mkdir(exist_ok=True)
-        with log_path.open("w", encoding="utf-8") as output:
-            process = subprocess.Popen([sys.executable, str(ROOT / "connect_drive.py"), client],
-                stdout=output, stderr=output, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        self.auth_scratch = TransferScratch()
+        log_path = self.auth_scratch.log
+        try:
+            with log_path.open("w", encoding="utf-8") as output:
+                process = subprocess.Popen([sys.executable, str(ROOT / "connect_drive.py"), client],
+                    stdout=output, stderr=output, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        except OSError as error:
+            self.auth_scratch.clean()
+            self.auth_scratch = None
+            messagebox.showerror("Cannot connect Drive", str(error), parent=self.root)
+            return
+        self.auth_process = process
         self.status.set("Finish Google sign-in in your browser. Credentials stay on this computer.")
         self.connect_button.configure(state="disabled")
+        self.start_button.configure(state="disabled")
 
         def check():
+            if self.auth_process is not process:
+                return
             if process.poll() is None:
                 self.root.after(500, check)
                 return
             self.connect_button.configure(state="normal")
+            self.start_button.configure(state="normal")
             self.status.set("Google Drive connected." if process.returncode == 0 else "Drive connection failed; see log below.")
             self.append(log_path.read_text(encoding="utf-8", errors="replace"))
+            self.auth_scratch.clean()
+            self.auth_scratch = None
+            self.auth_process = None
         self.root.after(500, check)
 
     def preview(self, *_):
@@ -169,6 +202,12 @@ class CopyApp:
         name = source.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
         target = (parent.rstrip("/") + ("" if parent.endswith(":") else "/") + name) if source and parent else "Choose both folders"
         self.destination_label.set(f"Destination: {target}")
+        cloud_route = is_remote(source) or is_remote(parent)
+        if hasattr(self, "profile") and not self.process and cloud_route != self.cloud_route:
+            self.cloud_route = cloud_route
+            self.workers.set(("8" if self.profile.get() == "Large files" else "64") if cloud_route else "16")
+        if hasattr(self, "resume_checkbox") and not self.process:
+            self.resume_checkbox.configure(state="disabled" if is_remote(source) or is_remote(parent) else "normal")
 
     def append(self, text):
         self.output.configure(state="normal")
@@ -179,16 +218,16 @@ class CopyApp:
         self.output.configure(state="disabled")
 
     def start(self):
-        if self.process:
+        if self.process or self.auth_process:
             return
         try:
-            # Keep logs outside both copy trees; do not inherit a shell.
-            log_dir = Path(tempfile.gettempdir()) / "parallel-folder-copy"
-            log_dir.mkdir(exist_ok=True)
-            self.log = log_dir / f"copy-{time.time_ns()}.log"
+            # A unique directory owns all disposable logs/cache for this job.
+            self.scratch = TransferScratch()
+            self.log = self.scratch.log
             if is_remote(self.source.get().strip()) or is_remote(self.parent.get().strip()):
-                plan = direct_plan(self.source.get(), self.parent.get(), self.workers.get(), self.replace.get(), self.log)
+                plan = direct_plan(self.source.get(), self.parent.get(), self.workers.get(), self.replace.get(), self.log, profile=self.profile.get())
                 args, self.target, self.backend = plan.command, plan.target, plan.backend
+                args += ["--cache-dir", str(self.scratch.cache), "--temp-dir", str(self.scratch.temp)]
             else:
                 args, self.target = copy_command(self.source.get(), self.parent.get(),
                     self.workers.get(), self.replace.get(), self.resumable.get(), self.log)
@@ -197,6 +236,9 @@ class CopyApp:
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except (OSError, ValueError) as error:
+            if self.scratch:
+                self.scratch.clean()
+                self.scratch = None
             messagebox.showerror("Cannot start copy", str(error), parent=self.root)
             return
         self.cancelled = False
@@ -223,7 +265,7 @@ class CopyApp:
             pass
         if code is None:
             elapsed = int(time.monotonic() - self.started)
-            self.status.set(f"{'Stopping' if self.cancelled else 'Copying'}… {elapsed}s elapsed. Details appear below as Windows reports them.")
+            self.status.set(f"{'Stopping' if self.cancelled else 'Copying'}… {elapsed}s elapsed. Transfer progress appears below.")
             self.root.after(300, self.poll)
             return
         # Drain any remaining log chunks before reporting the final summary.
@@ -233,10 +275,18 @@ class CopyApp:
         self.process = None
         for widget in self.inputs + [self.start_button]:
             widget.configure(state="normal")
+        self.preset_widget.configure(state="readonly")
+        self.preview()
         self.stop_button.configure(state="disabled")
         if is_remote(self.target) or Path(self.target).is_dir():
             self.open_button.configure(state="normal")
         self.status.set(result_message(code, self.backend, self.cancelled))
+        try:
+            self.scratch.clean()
+            self.scratch = None
+            self.append("Temporary files and on-disk logs cleaned. The displayed log stays available until you close the window.\n")
+        except OSError as error:
+            self.append(f"Temporary-file cleanup could not finish: {error}\n")
 
     def stop(self):
         if self.process and self.process.poll() is None:
@@ -261,6 +311,13 @@ class CopyApp:
             os.startfile(self.target)
 
     def close(self):
+        if self.auth_process:
+            if self.auth_process.poll() is None:
+                self.auth_process.terminate()
+            self.auth_process.wait(timeout=5)
+            self.auth_scratch.clean()
+            self.auth_process = None
+            self.auth_scratch = None
         if self.process:
             if not messagebox.askyesno("Stop copying?", "Stop the current copy and close? Some files may be incomplete.", parent=self.root):
                 return

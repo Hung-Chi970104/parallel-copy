@@ -28,7 +28,8 @@ def main():
     for index, case in enumerate(cases):
         direction, backend, profile, workers, restart, trial = case[:6]
         defaults = {"streams": 4, "seed": "seed", "fast_list": False, "pacer_ms": 100, "chunk_mib": 8, "cutoff_mib": 256}
-        keys = ("direction", "backend", "profile", "workers", "restartable", "trial", "streams", "seed", "fast_list", "pacer_ms", "chunk_mib", "cutoff_mib")
+        defaults["warm"] = False
+        keys = ("direction", "backend", "profile", "workers", "restartable", "trial", "streams", "seed", "fast_list", "pacer_ms", "chunk_mib", "cutoff_mib", "warm")
         if any(all(row.get(key, defaults.get(key)) == value for key, value in zip(keys, case))
             for row in completed):
             print(f"SKIP {case}: already recorded", flush=True)
