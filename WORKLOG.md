@@ -1,5 +1,12 @@
 # Work log
 
+## 2026-09-13 — Open-source release
+
+At the user's explicit request, added an MIT license and README licensing notice
+for publication at https://github.com/Hung-Chi970104/parallel-copy. Credentials,
+downloaded engines and generated benchmark payloads remain ignored. Application
+code and measured results are unchanged.
+
 ## 2026-09-13 — Extract and optimize the personal copy application
 
 User request: "Sure why dont you make it as a personal project, and put the thing

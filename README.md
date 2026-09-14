@@ -7,6 +7,9 @@ in place. This is a copy tool; it never mirrors, synchronizes deletions, or move
 Double-click **Parallel Copy.pyw**, or run `python parallel_copy.py`.
 Requires Python with Tkinter (standard Windows installer). No pip packages.
 
+Open source under the [MIT License](LICENSE). Robocopy and rclone are separate
+tools distributed under their respective licenses.
+
 ## Pick the correct route
 
 - **Local…** chooses a Windows folder, including mounted Google Drive folders.
