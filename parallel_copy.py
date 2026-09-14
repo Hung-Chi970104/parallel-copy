@@ -3,6 +3,8 @@
 Uses Windows Robocopy for parallel transfers; never mirrors or deletes files.
 Destination is a parent folder: the source folder's name is appended.
 """
+import sys
+sys.dont_write_bytecode = True
 import argparse
 import codecs
 import json
@@ -16,9 +18,10 @@ import threading
 import webbrowser
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
-from transfer_engine import CONFIG, ROOT, direct_plan, is_remote, rclone_base, result_message
+from transfer_engine import CONFIG, ROOT, PRESETS, direct_plan, is_remote, rclone_base, result_message
 from drive_picker import DrivePicker
 from scratch import TransferScratch
+from folder_parallel import kill_tree
 
 
 def copy_command(source, parent, workers, replace, resumable, log):
@@ -115,10 +118,10 @@ class CopyApp:
         presets.pack(anchor="w", pady=(0, 6))
         ttk.Label(presets, text="Cloud preset").pack(side="left", padx=(0, 10))
         self.profile = tk.StringVar(value="Small files")
-        preset = ttk.Combobox(presets, textvariable=self.profile, values=["Small files", "Large files"],
+        preset = ttk.Combobox(presets, textvariable=self.profile, values=["Small files", "Many small files", "Large files"],
                               state="readonly", width=18)
         preset.pack(side="left")
-        preset.bind("<<ComboboxSelected>>", lambda _: self.workers.set(("8" if self.profile.get() == "Large files" else "64") if self.cloud_route else "16"))
+        preset.bind("<<ComboboxSelected>>", lambda _: self.workers.set(self.default_workers()))
         self.preset_widget = preset
         self.inputs.append(preset)
         for label, variable in [("Replace existing files when different", self.replace),
@@ -146,11 +149,17 @@ class CopyApp:
         self.output.grid(row=9, column=0, columnspan=3, sticky="nsew")
         ttk.Label(frame, text="Source and extra destination files stay in place. Windows junctions are skipped. Direct cloud copies use Google's API; G: paths use the desktop cache.",
                   wraplength=730).grid(row=10, column=0, columnspan=3, sticky="w", pady=(12, 0))
+        self.preview()
 
     def browse(self, variable):
         chosen = filedialog.askdirectory(parent=self.root, initialdir=variable.get() or None)
         if chosen:
             variable.set(chosen)
+
+    def default_workers(self):
+        if not self.cloud_route:
+            return "16"
+        return str(PRESETS[self.profile.get()]["workers"])
 
     def browse_drive(self, variable):
         if not CONFIG.exists():
@@ -170,7 +179,7 @@ class CopyApp:
         log_path = self.auth_scratch.log
         try:
             with log_path.open("w", encoding="utf-8") as output:
-                process = subprocess.Popen([sys.executable, str(ROOT / "connect_drive.py"), client],
+                process = subprocess.Popen([sys.executable, "-B", str(ROOT / "connect_drive.py"), client],
                     stdout=output, stderr=output, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         except OSError as error:
             self.auth_scratch.clean()
@@ -205,7 +214,7 @@ class CopyApp:
         cloud_route = is_remote(source) or is_remote(parent)
         if hasattr(self, "profile") and not self.process and cloud_route != self.cloud_route:
             self.cloud_route = cloud_route
-            self.workers.set(("8" if self.profile.get() == "Large files" else "64") if cloud_route else "16")
+            self.workers.set(self.default_workers())
         if hasattr(self, "resume_checkbox") and not self.process:
             self.resume_checkbox.configure(state="disabled" if is_remote(source) or is_remote(parent) else "normal")
 
@@ -243,7 +252,7 @@ class CopyApp:
             return
         self.cancelled = False
         self.log_offset = 0
-        self.decoder = codecs.getincrementaldecoder("utf-8" if self.backend == "rclone" else "utf-16-le")(errors="replace")
+        self.decoder = codecs.getincrementaldecoder("utf-16-le" if self.backend == "robocopy" else "utf-8")(errors="replace")
         self.started = time.monotonic()
         for widget in self.inputs + [self.start_button]:
             widget.configure(state="disabled")
@@ -291,7 +300,10 @@ class CopyApp:
     def stop(self):
         if self.process and self.process.poll() is None:
             self.cancelled = True
-            self.process.terminate()
+            if self.backend == "folders":
+                kill_tree(self.process)
+            else:
+                self.process.terminate()
             self.stop_button.configure(state="disabled")
 
     def open_target(self):

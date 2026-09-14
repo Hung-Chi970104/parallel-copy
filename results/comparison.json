@@ -1,0 +1,98 @@
+[
+  {
+    "profile": "small",
+    "direction": "download",
+    "original_verified_seconds": 5.082021799986251,
+    "direct_verified_seconds": 2.0799688000115566,
+    "direct_runs": 3,
+    "ratio": 2.4433163612636952
+  },
+  {
+    "profile": "small",
+    "direction": "upload",
+    "original_verified_seconds": 19.05831309995847,
+    "direct_verified_seconds": 6.7419713999843225,
+    "direct_runs": 3,
+    "ratio": 2.826816070445328
+  },
+  {
+    "profile": "small",
+    "direction": "cloud-copy",
+    "original_verified_seconds": 18.244607499975245,
+    "direct_verified_seconds": 8.24401389999548,
+    "direct_runs": 3,
+    "ratio": 2.213073354957013
+  },
+  {
+    "profile": "large",
+    "direction": "download",
+    "original_verified_seconds": 0.239991300040856,
+    "direct_verified_seconds": 3.458321899990551,
+    "direct_runs": 3,
+    "ratio": 0.0693953041333462
+  },
+  {
+    "profile": "large",
+    "direction": "upload",
+    "original_verified_seconds": 8.35093680000864,
+    "direct_verified_seconds": 7.495471600035671,
+    "direct_runs": 3,
+    "ratio": 1.1141309374007764
+  },
+  {
+    "profile": "large",
+    "direction": "cloud-copy",
+    "original_verified_seconds": 11.698937600012869,
+    "direct_verified_seconds": 7.315199000004213,
+    "direct_runs": 3,
+    "ratio": 1.5992644355958232
+  },
+  {
+    "profile": "many",
+    "direction": "download",
+    "original_verified_seconds": 3.5604018999729306,
+    "direct_verified_seconds": 9.929998099978548,
+    "direct_runs": 3,
+    "ratio": 0.35855010888477634
+  },
+  {
+    "profile": "many",
+    "direction": "upload",
+    "original_verified_seconds": 166.51574309999705,
+    "direct_verified_seconds": 106.23451679997379,
+    "direct_runs": 3,
+    "ratio": 1.5674354072088004
+  },
+  {
+    "profile": "many",
+    "direction": "cloud-copy",
+    "original_verified_seconds": 162.1545439500187,
+    "direct_verified_seconds": 93.07196189998649,
+    "direct_runs": 3,
+    "ratio": 1.742249122504446
+  },
+  {
+    "profile": "bulk",
+    "direction": "download",
+    "original_verified_seconds": 9.743744399980642,
+    "direct_verified_seconds": 10.060370299965143,
+    "direct_runs": 1,
+    "ratio": 0.9685274109656185
+  },
+  {
+    "profile": "bulk",
+    "direction": "upload",
+    "original_verified_seconds": 24.13382550003007,
+    "direct_verified_seconds": 14.171065200003795,
+    "direct_runs": 1,
+    "ratio": 1.7030353865017576
+  },
+  {
+    "profile": "bulk",
+    "direction": "cloud-copy",
+    "original_verified_seconds": 25.510340599983465,
+    "direct_verified_seconds": 7.2761606000131,
+    "direct_runs": 1,
+    "ratio": 3.506016703361047
+  }
+]

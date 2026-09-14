@@ -1,0 +1,18 @@
+{
+  "status": "pass",
+  "checks": [
+    "unicode",
+    "empty file",
+    "empty folder",
+    "upload",
+    "download",
+    "cloud-to-cloud",
+    "keep existing",
+    "replace changed",
+    "many-file GUI upload",
+    "GUI scratch cleanup",
+    "many-file cloud-copy",
+    "many-file download"
+  ],
+  "fixture_remote": "gdrive:ParallelCopy-benchmark-20260913/conformance-1789343954450591400"
+}

@@ -1,0 +1,23 @@
+test_disjoint_batches_handle_regex_characters_and_root_files (test_folder_parallel.FolderCopies.test_disjoint_batches_handle_regex_characters_and_root_files) ... ok
+test_parallel_folders_preserve_tree_and_existing_file_choices (test_folder_parallel.FolderCopies.test_parallel_folders_preserve_tree_and_existing_file_choices) ... ok
+test_closing_picker_stops_its_pending_listing (test_gui.CopyWindowTests.test_closing_picker_stops_its_pending_listing) ... ok
+test_cloud_paths_disable_windows_resume_option (test_gui.CopyWindowTests.test_cloud_paths_disable_windows_resume_option) ... ok
+test_failed_auth_launch_cleans_its_scratch (test_gui.CopyWindowTests.test_failed_auth_launch_cleans_its_scratch) ... ok
+test_invalid_input_shows_error_without_starting_process (test_gui.CopyWindowTests.test_invalid_input_shows_error_without_starting_process) ... ok
+test_start_copy_reaches_completed_state_and_restores_controls (test_gui.CopyWindowTests.test_start_copy_reaches_completed_state_and_restores_controls) ... ok
+test_stop_many_file_route_terminates_grandchild_and_cleans_scratch (test_gui.CopyWindowTests.test_stop_many_file_route_terminates_grandchild_and_cleans_scratch) ... ok
+test_stop_terminates_child_and_restores_start (test_gui.CopyWindowTests.test_stop_terminates_child_and_restores_start) ... ok
+test_real_copy_preserves_extras_and_supports_overwrite_choice (test_parallel_copy.ParallelCopyTests.test_real_copy_preserves_extras_and_supports_overwrite_choice) ... ok
+test_rejects_self_copy_and_recursive_destination (test_parallel_copy.ParallelCopyTests.test_rejects_self_copy_and_recursive_destination) ... ok
+test_cleans_owned_log_cache_and_temp_without_touching_neighbor (test_scratch.ScratchCleanup.test_cleans_owned_log_cache_and_temp_without_touching_neighbor) ... ok
+test_all_rclone_nonzero_exit_codes_are_failures (test_transfer_engine.TransferPlans.test_all_rclone_nonzero_exit_codes_are_failures) ... ok
+test_cloud_copy_preserves_source_folder_and_skips_existing (test_transfer_engine.TransferPlans.test_cloud_copy_preserves_source_folder_and_skips_existing) ... ok
+test_does_not_report_cache_writes_as_cloud_api_completion (test_transfer_engine.TransferPlans.test_does_not_report_cache_writes_as_cloud_api_completion) ... ok
+test_real_rclone_copy_on_local_fixture (test_transfer_engine.TransferPlans.test_real_rclone_copy_on_local_fixture) ... ok
+test_rejects_remote_self_and_nested_copies (test_transfer_engine.TransferPlans.test_rejects_remote_self_and_nested_copies) ... ok
+test_windows_paths_are_not_remote_paths (test_transfer_engine.TransferPlans.test_windows_paths_are_not_remote_paths) ... ok
+
+----------------------------------------------------------------------
+Ran 18 tests in 6.916s
+
+OK

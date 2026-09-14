@@ -22,4 +22,34 @@ Warm DriveFS reads are separate from uncached direct downloads. Filesystem uploa
 times and remote-observed completion times are distinct. Initial tuning screens
 sequential Python, the original Robocopy settings, Robocopy without restartable
 mode, and several rclone transfer counts. Final results and limits belong in
-PERFORMANCE.md; this entry does not claim all measurements are complete yet.
+PERFORMANCE.md, generated from the retained measurements by `report.py`.
+
+Completed 143 timed folder transfers: all full path/size/MD5 comparisons passed.
+The study covers all three directions, 128-file flat folders, 2,048 files across
+64 subfolders, 4 x 16 MiB files, and 2 x 256 MiB files. Finalists were repeated;
+single-run larger-payload screening and cache limitations are explicit in the
+report. Increasing concurrency or splitting every workload into independent
+processes did not universally help. The selected presets retain the improvements
+that held up on their represented workload; raw results include slower variants.
+
+The user also requested: "Hey btw remember to clean up the junks when done, and
+the app should also do the same once done it should automatically clean up the
+junk". Each application job now owns and removes its temporary logs/cache after
+reading the final output, including Stop. Cancellation kills owned child processes.
+Folder-picker workers are stopped when closed. Launching the GUI avoids generating
+Python bytecode caches. Credentials and the installed engine remain; sources,
+completed destinations and Google's managed cache are preserved. Interrupted
+destination files can remain for retry, as documented in README.
+
+All 18 local application tests pass, including a real GUI copy and process-tree
+cancellation. Live Drive conformance passes uploads, downloads, server copies,
+Unicode, empty files/folders, keep-existing and replacement choices, the many-file
+GUI route, and its scratch cleanup. Evidence is under `results/`.
+
+Archived and integrity-tested the benchmark logs and manifests, permanently
+removed the exact generated cloud folder after checking its identity and recorded
+runs, verified its absence, and removed local payloads/test caches. Removed the two
+completed prototype fixture logs and the original completed TIGP copy log. The
+cleanup receipt records cloud and local completion. The initial cleanup identity
+check stopped safely because rooted rclone stat omits the expected name; resolving
+the unique folder through its parent listing supplied the verified identity.

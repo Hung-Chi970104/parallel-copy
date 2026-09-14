@@ -1,0 +1,14 @@
+{
+  "utc": "2026-09-13T20:01:43.979248-04:00",
+  "remote": "gdrive:ParallelCopy-benchmark-20260913",
+  "folder_id": "1xeb8ENma3d84L3dEbsLbxCSQ4yHaod23",
+  "top_level_names": [
+    "conformance-1789343954450591400",
+    "runs",
+    "seed"
+  ],
+  "recorded_cloud_run_folders": 82,
+  "logs_archive": "benchmark-logs.zip",
+  "cloud_deleted": true,
+  "local_deleted": true
+}

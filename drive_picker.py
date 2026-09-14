@@ -73,7 +73,8 @@ class DrivePicker:
             except Exception as error:
                 self.pending.put(([], str(error)))
 
-        threading.Thread(target=worker, daemon=True).start()
+        self.worker = threading.Thread(target=worker, daemon=True)
+        self.worker.start()
         self.after_id = self.window.after(100, self.poll)
 
     def poll(self):
@@ -115,6 +116,10 @@ class DrivePicker:
         with self.process_lock:
             if self.process and self.process.poll() is None:
                 self.process.terminate()
+        # Keep Tk-owned objects alive on the UI thread until its worker exits.
+        # Otherwise the worker's final reference could destroy a StringVar there.
+        if hasattr(self, "worker"):
+            self.worker.join(timeout=2)
 
     def close(self):
         self.cancel_listing()

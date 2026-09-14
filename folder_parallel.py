@@ -31,8 +31,8 @@ def kill_tree(process):
         process.terminate()
 
 
-def list_children(source):
-    result = subprocess.run(rclone_base() + ["lsjson", source], capture_output=True,
+def list_children(source, options=()):
+    result = subprocess.run(rclone_base() + list(options) + ["lsjson", source], capture_output=True,
         text=True, encoding="utf-8", timeout=90)
     if result.returncode:
         raise RuntimeError(result.stderr.strip())
@@ -49,13 +49,18 @@ def append_path(parent, child):
     return str(Path(parent) / child)
 
 
-def run(source, parent, workers, folders, replace, log, pacer=10, chunk=8, strategy="folders"):
+def run(source, parent, workers, folders, replace, log, pacer=10, chunk=8, strategy="folders", cache=None, temp=None):
     log = Path(log)
     # Reuse the normal planner's validation and destination convention.
     plan = direct_plan(source, parent, workers, replace, log)
     source = plan.command[plan.command.index("copy") + 1]
     target = plan.target
-    children = list_children(source)
+    scratch_options = []
+    if cache:
+        scratch_options += ["--cache-dir", str(cache)]
+    if temp:
+        scratch_options += ["--temp-dir", str(temp)]
+    children = list_children(source, scratch_options)
     directories = [item for item in children if item["IsDir"]]
     files = [item for item in children if not item["IsDir"]]
     folders = max(1, min(int(folders), int(workers), len(directories) or 1))
@@ -73,7 +78,7 @@ def run(source, parent, workers, folders, replace, log, pacer=10, chunk=8, strat
     def execute(command):
         if cancelled.is_set():
             raise RuntimeError("Copy cancelled")
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        process = subprocess.Popen(command + scratch_options, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, encoding="utf-8", errors="replace",
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         with lock:
@@ -158,9 +163,12 @@ if __name__ == "__main__":
     parser.add_argument("--replace", action="store_true")
     parser.add_argument("--log", required=True)
     parser.add_argument("--strategy", choices=["folders", "groups"], default="folders")
+    parser.add_argument("--cache-dir")
+    parser.add_argument("--temp-dir")
     args = parser.parse_args()
     try:
-        run(args.source, args.parent, args.workers, args.folders, args.replace, args.log, strategy=args.strategy)
+        run(args.source, args.parent, args.workers, args.folders, args.replace, args.log,
+            strategy=args.strategy, cache=args.cache_dir, temp=args.temp_dir)
     except Exception as error:
         with Path(args.log).open("a", encoding="utf-8") as handle:
             handle.write(f"ERROR: {error}\n")

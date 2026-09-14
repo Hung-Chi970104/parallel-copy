@@ -11,9 +11,9 @@ from benchmark import DATA, CLOUD_ROOT, manifest, remote_manifest
 from transfer_engine import direct_plan, rclone_base
 
 
-def copy(source, parent, replace=False):
+def copy(source, parent, replace=False, profile="Small files"):
     log = DATA / f"conformance-{time.time_ns()}.log"
-    plan = direct_plan(source, parent, 16, replace, log)
+    plan = direct_plan(source, parent, 16, replace, log, profile=profile)
     result = subprocess.run(plan.command, capture_output=True, timeout=180)
     if result.returncode:
         raise RuntimeError(f"Live correctness transfer failed: {result.returncode}; log {log.name}")
@@ -43,8 +43,39 @@ def main():
     download = copy(cloud_copy, destination, replace=True)
     assert manifest(Path(download)) == expected, "Download manifest mismatch"
     assert (Path(download) / "empty folder").is_dir(), "Empty folder not preserved"
+    # Exercise the actual window, worker cleanup and new many-file route live.
+    import tkinter as tk
+    from parallel_copy import CopyApp
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        app = CopyApp(root, str(source), cloud_parent + "/gui")
+        app.profile.set("Many small files")
+        app.workers.set("128")
+        app.start()
+        assert app.process is not None, "GUI failed to start cloud transfer"
+        scratch_root = app.scratch.root
+        deadline = time.monotonic() + 180
+        while app.process is not None and time.monotonic() < deadline:
+            root.update()
+            time.sleep(.02)
+        assert app.process is None, "GUI cloud copy timed out"
+        assert "acknowledged" in app.status.get(), app.status.get()
+        assert not scratch_root.exists(), "GUI did not clean transfer scratch"
+        assert remote_manifest(app.target) == expected, "GUI cloud manifest mismatch"
+    finally:
+        if app.process:
+            app.stop()
+        root.destroy()
+    many_copy = copy(target, cloud_parent + "/many-copy", profile="Many small files")
+    assert remote_manifest(many_copy) == expected, "Many-file cloud-copy manifest mismatch"
+    many_download_parent = DATA / "many-conformance-download"
+    many_download_parent.mkdir(exist_ok=True)
+    many_download = copy(many_copy, many_download_parent, profile="Many small files")
+    assert manifest(many_download) == expected, "Many-file download manifest mismatch"
     result = {"status": "pass", "checks": ["unicode", "empty file", "empty folder",
-              "upload", "download", "cloud-to-cloud", "keep existing", "replace changed"],
+              "upload", "download", "cloud-to-cloud", "keep existing", "replace changed",
+              "many-file GUI upload", "GUI scratch cleanup", "many-file cloud-copy", "many-file download"],
               "fixture_remote": cloud_parent}
     (Path(__file__).resolve().parent / "results" / "cloud-conformance.json").write_text(json.dumps(result, indent=2))
     print(json.dumps(result), flush=True)

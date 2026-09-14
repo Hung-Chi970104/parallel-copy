@@ -3,10 +3,16 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 import re
 import shutil
+import sys
 
 ROOT = Path(__file__).resolve().parent
 CONFIG = ROOT / ".local" / "rclone.conf"
 REMOTE = re.compile(r"^([A-Za-z][A-Za-z0-9_-]{1,}):(.*)$")
+PRESETS = {
+    "Small files": {"workers": 128, "pacer_ms": 1, "chunk_mib": 8, "folder_jobs": 0},
+    "Many small files": {"workers": 128, "pacer_ms": 10, "download_pacer_ms": 1, "chunk_mib": 8, "folder_jobs": 16},
+    "Large files": {"workers": 8, "pacer_ms": 10, "chunk_mib": 64, "folder_jobs": 0},
+}
 
 
 def is_remote(value):
@@ -46,6 +52,9 @@ class TransferPlan:
 
 
 def direct_plan(source, parent, workers, replace, log, streams=4, profile="Small files"):
+    if profile not in PRESETS:
+        raise ValueError("Choose a listed cloud preset.")
+    settings = PRESETS[profile]
     source, parent = str(source).strip(), str(parent).strip()
     if not source or not parent:
         raise ValueError("Choose both folders.")
@@ -91,18 +100,27 @@ def direct_plan(source, parent, workers, replace, log, streams=4, profile="Small
         "--stats-one-line", "--stats-log-level", "NOTICE", "--log-level", "INFO",
         "--log-file", str(log), "--retries", "3", "--low-level-retries", "5",
         "--contimeout", "15s", "--timeout", "2m", "--multi-thread-streams", str(streams)]
-    command += ["--fast-list", "--drive-pacer-min-sleep", "10ms", "--drive-chunk-size",
-                "64M" if profile == "Large files" else "8M"]
+    pacer = settings.get("download_pacer_ms", settings["pacer_ms"]) if not is_remote(target) else settings["pacer_ms"]
+    command += ["--fast-list", "--drive-pacer-min-sleep", f"{pacer}ms",
+                "--drive-chunk-size", f"{settings['chunk_mib']}M"]
     if not replace:
         command.append("--ignore-existing")
-    return TransferPlan(command, target, "rclone", Path(log),
+    backend = "rclone"
+    if settings["folder_jobs"] and is_remote(target):
+        folder_jobs = min(settings["folder_jobs"], max(1, int(workers) // 8))
+        command = [sys.executable, "-B", str(ROOT / "folder_parallel.py"), source, str(parent),
+                   "--workers", str(workers), "--folders", str(folder_jobs), "--log", str(log)]
+        if replace:
+            command.append("--replace")
+        backend = "folders"
+    return TransferPlan(command, target, backend, Path(log),
         "Cloud API transfer complete. Rclone checks available file checksums during transfer.")
 
 
 def result_message(code, backend, cancelled=False):
     if cancelled:
         return "Stopped. Partial files may remain; enable replacement before restarting."
-    if backend == "rclone":
+    if backend in ("rclone", "folders"):
         return ("Copy finished and acknowledged by the cloud API." if code == 0 else
                 f"Copy failed (code {code}); review the log. Some files may have copied.")
     if code < 0 or code >= 8:

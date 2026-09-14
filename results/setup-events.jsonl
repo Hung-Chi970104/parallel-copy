@@ -1,0 +1,1 @@
+{"phase":"warm many-file cache preparation","status":"interrupted before timed transfer","reason":"Serial prefetch of 2048 DriveFS files took over four minutes; replaced by 32 concurrent reads, then resumed without repeating completed cases.","date":"2026-09-13"}

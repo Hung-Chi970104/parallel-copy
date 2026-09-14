@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 from transfer_engine import ROOT, rclone_base
 
@@ -24,7 +25,7 @@ RESULTS = ROOT / "results" / "measurements.jsonl"
 CLOUD_ROOT = "ParallelCopy-benchmark-20260913"
 MOUNT = Path("G:/My Drive") / CLOUD_ROOT
 PROFILES = {"small": (128, 32 * 1024), "large": (4, 16 * 1024 * 1024),
-            "many": (2048, 8 * 1024)}
+            "many": (2048, 8 * 1024), "bulk": (2, 256 * 1024 * 1024)}
 
 
 def record(row):
@@ -56,7 +57,7 @@ def prepare():
             if not path.exists():
                 path.write_bytes(os.urandom(size))
         (DATA / f"{profile}.json").write_text(json.dumps(manifest(folder)), encoding="utf-8")
-    print("Prepared incompressible synthetic payloads: 128 x 32 KiB, 4 x 16 MiB, and 2,048 x 8 KiB across 64 folders", flush=True)
+    print("Prepared incompressible payloads: 128 x 32 KiB, 4 x 16 MiB, 2,048 x 8 KiB across 64 folders, and 2 x 256 MiB", flush=True)
 
 
 def remote_manifest(remote):
@@ -128,11 +129,12 @@ def run_case(direction, backend, profile, workers, restartable, trial, streams=4
     else:
         command = None
     if warm and not direct and direction != "upload":
-        for path in mount_source.rglob("*"):
-            if path.is_file():
-                with path.open("rb") as handle:
-                    while handle.read(1024 * 1024):
-                        pass
+        def read_all(path):
+            with path.open("rb") as handle:
+                while handle.read(1024 * 1024):
+                    pass
+        with ThreadPoolExecutor(max_workers=32) as pool:
+            list(pool.map(read_all, (p for p in mount_source.rglob("*") if p.is_file())))
         row["cache"] = "Explicitly warmed immediately before timing"
     start = time.perf_counter()
     try:
@@ -177,6 +179,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
     sub.add_parser("prepare")
+    sub.add_parser("seed", help="Upload only the generated source fixtures to the benchmark seed")
     run = sub.add_parser("run")
     run.add_argument("direction", choices=["download", "upload", "cloud-copy"])
     run.add_argument("backend", choices=["robocopy", "rclone", "python", "folders", "batches"])
@@ -196,6 +199,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.action == "prepare":
         prepare()
+    elif args.action == "seed":
+        if not (DATA / "source").is_dir():
+            parser.error("Run prepare first.")
+        subprocess.run(rclone_base() + ["copy", str(DATA / "source"),
+            f"gdrive:{CLOUD_ROOT}/seed", "--transfers", "32", "--drive-pacer-min-sleep", "10ms"], check=True)
+        for profile in PROFILES:
+            wait_remote(f"gdrive:{CLOUD_ROOT}/seed/{profile}",
+                        json.loads((DATA / f"{profile}.json").read_text()))
+        print("All generated seed profiles verified.")
     else:
         result = run_case(args.direction, args.backend, args.profile, args.workers,
                           args.restartable, args.trial, args.streams, args.seed, args.fast_list,
